@@ -1,0 +1,659 @@
+#!/usr/bin/env python3
+"""
+usage:
+  pdftags
+
+"""
+
+import configparser
+import io
+import hashlib
+import os
+import random
+import sys
+import subprocess
+import shutil
+import time
+from datetime import datetime
+
+from appdirs import AppDirs
+import cairo
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+import piexif
+from docopt import docopt
+from gi.repository import Gdk, GdkPixbuf, Gtk, Pango
+from PIL import Image
+from tqdm import tqdm
+
+from pdftag.db import Pdfs, Tags, session
+import pdftag
+
+commands = docopt(__doc__)
+#print(commands)
+
+appdirs = AppDirs("pdftags")
+#print(appdirs.user_data_dir)
+#print(appdirs.user_config_dir)
+
+# load config data
+config = configparser.ConfigParser()
+config.read(os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
+#print("config entries")
+#for key in config:
+#   print(key)
+#   for k in config[key]:
+#       print("   ", k, ":", config[key][k])
+searchpath = config.get('Pdfs', 'path', fallback=None)
+if searchpath is None:
+    print("The config file was missing, please edit")
+    print("   ",os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
+    print("and add the path to your pdfs")
+
+    with open(os.path.join(appdirs.user_config_dir, 'pdftags.ini'), "w") as f:
+        f.write("[Pdfs]\n")
+        f.write("  path = <path to your pdfs>")
+        f.write("  viewer = <path or name of pdfviewer>")
+
+pdfviewer = config.get('Pdfs', 'viewer', fallback=None)
+if pdfviewer is None:
+    print("Please add a pdfviewer to your ini file at")
+    print("   ",os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
+    print(" (add a 'viewer=<path/name>' to the [Pdfs] section")
+else:
+    if shutil.which(pdfviewer) is None:
+        print("Can't find pdf viewer:",  pdfviewer)
+
+extensiondir = config.get('Extension', 'path', fallback=None)
+
+def find_parent_with_type(obj, cls):
+    """Find a certain parent or grand^n-parent of an object"""
+    while type(obj) != cls:
+        obj = obj.get_parent()
+    return obj
+
+def md5(fname):
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
+
+class MyTag(Gtk.Button):
+
+    def __init__(self, tag):
+        super().__init__()
+        label = Gtk.Label(tag.name)
+        label.set_tooltip_text(tag.name)
+        label.set_max_width_chars(5)
+        label.set_ellipsize(Pango.EllipsizeMode.END)
+        self.add(label)
+        self.connect("clicked", self.myclicked)
+        self.id = tag.id
+        self.name = tag.name
+
+    def myclicked(self, object):
+        # go up to the main window and call it's method to load a new tag
+        find_parent_with_type(self, MainWindow).load_tags(None, tags=self.name)
+
+
+class MyPdf(Gtk.Box):
+
+    def __init__(self, pdf):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+        self.set_name("MyPdf")
+        self.set_homogeneous(False)
+        self.pdf = pdf
+
+        new = Gtk.Button()
+        filename = os.path.basename(pdf.path)
+        date = str(pdf.date)
+        label = Gtk.Label("name: {}\ndate: {}".format(filename, date))
+        new.add(label)
+
+        self.pack_start(new, True, True, 0)
+        self.tags = Gtk.Box(Gtk.Orientation.HORIZONTAL, spacing=2)
+        self.update_tags()
+        self.pack_start(self.tags, False, False, 1)
+        self.set_focus_chain([self])
+
+    def update_tags(self):
+        for i in self.tags.get_children():
+            i.destroy()
+        for i in sorted(self.pdf.tags, key=lambda x: x.name):
+            newtag = MyTag(i)
+            self.tags.pack_start(newtag, False, False, 0)
+        self.show_all()
+        self.queue_draw()
+
+
+class MyTagTree(Gtk.TreeStore):
+
+    def __init__(self):
+        super().__init__(Gtk.Image, str, int)
+        parents = {}
+        for t in session.query(Tags).order_by(Tags.path).all():
+            path = t.path.split(".")
+            if len(path) >= 2:
+                parent = parents[path[-2]]
+            else:
+                parent = None
+            if t.icon is not None:
+                image = Gtk.Image().set_from_pixbuf(GdkPixbuf.Pixbuf.new_from_data(t.icon))
+            else:
+                image = Gtk.Image().set_from_stock(Gtk.STOCK_MISSING_IMAGE, Gtk.IconSize.SMALL_TOOLBAR)
+            element = self.append(parent, (image, t.name, t.id))
+            parents[str(t.id)] = element
+
+        self.set_sort_func(1, self.compare, None)
+        # sort once
+        self.set_sort_column_id(1, Gtk.SortType.ASCENDING)
+        self.set_sort_column_id(Gtk.TREE_SORTABLE_UNSORTED_SORT_COLUMN_ID, Gtk.SortType.ASCENDING)
+
+    def compare(self, model, row1, row2, user_data):
+        value1 = model.get_value(row1, 1)
+        value2 = model.get_value(row2, 1)
+        if value1 < value2:
+            return -1
+        elif value1 == value2:
+            return 0
+        else:
+            return 1
+
+
+class TagFlowBox(Gtk.FlowBox):
+
+    # TODO catch grab focus, move focus and save in self.current
+    # replace flow.get_focus_child with flow.get_current
+
+    def __init__(self):
+        super().__init__()
+        self.set_homogeneous(True)
+        self.set_selection_mode(Gtk.SelectionMode.MULTIPLE)
+        self.set_activate_on_single_click(False)
+        self.connect("keynav-failed", self.failed)
+        self.current = None
+
+    def get_current(self):
+        if self.current is None:
+            self.current = self.get_children()[0]
+        return self.current
+
+    def get_childs_per_line(self):
+        childs = self.get_children()
+        if len(childs) > 0:
+            total_width = self.get_allocated_width()
+            child_width = self.get_children()[0].get_allocated_width()
+            # there seem to be some extra pixel somewhere, so we add 0.1
+            return int(total_width/child_width + 0.1)
+        return 0
+
+    def failed(self, *args):
+        print("failed: ", *args)
+
+    def click_on_thumb(self, widget, element):
+        print("got a click: ", element.get_child().photo.tags)
+        self.current = element.get_child()
+
+
+class SingleImage(Gtk.Box):
+    def __init__(self, photo):
+        super().__init__(self, orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        self.set_homogeneous(False)
+        self.image = Gtk.Image()
+        if os.path.exists(photo.path):
+            self.im = GdkPixbuf.Pixbuf().new_from_file(photo.path).apply_embedded_orientation()
+            self.w = self.im.get_width()
+            self.h = self.im.get_height()
+            zoomh, zoomw = 1, 1
+            if self.h > 500:
+                zoomh = 500/self.h
+            if self.w > 800:
+                zoomw = 800/self.w
+            self.zoom = min(1, zoomh, zoomw)
+
+            self.image.set_from_pixbuf(self.im.scale_simple(
+                self.w*self.zoom, self.h*self.zoom, GdkPixbuf.InterpType.BILINEAR))
+        else:
+            self.image.new_from_icon_name("camera-photo", Gtk.IconSize.SMALL_TOOLBAR)
+
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled.add_with_viewport(self.image)
+        scrolled.connect("scroll-event", self.rescale)
+        self.pack_start(scrolled, True, True, 0)
+
+        tags = Gtk.Box(spacing=2)
+        for i in photo.tags:
+            newtag = MyTag(i)
+            tags.pack_start(newtag, False, False, 0)
+        self.pack_start(tags, False, False, 1)
+
+        properties = Gtk.ListStore(str, str)
+        if os.path.exists(photo.path):
+            d = piexif.load(photo.path)
+            for i in piexif.TAGS:
+                if i in d:
+                    for nr in piexif.TAGS[i]:
+                        if nr in d[i]:
+                            n = piexif.TAGS[i][nr]['name']
+                            t = piexif.TAGS[i][nr]['type']
+                            value = d[i][nr]
+                            if t == piexif.TYPES.Undefined:
+                                #print("DEBUG: exif undefined:", n, value.decode('ascii'))
+                                continue
+                            elif t in [piexif.TYPES.Short, piexif.TYPES.Byte,
+                                       piexif.TYPES.SShort, piexif.TYPES.SByte,
+                                       piexif.TYPES.SLong, piexif.TYPES.Long]:
+                                value = int(value)
+                            elif t in [piexif.TYPES.Float, piexif.TYPES.DFloat]:
+                                value = float(value)
+                            elif t in [piexif.TYPES.Rational, piexif.TYPES.SRational]:
+                                value = value[0]/value[1]
+                            elif t == piexif.TYPES.Ascii:
+                                value = value.decode('ascii')
+                            else:
+                                print('EXIF type', t, ' not implemented')
+                            properties.append([n, str(value)])
+        properties.set_sort_column_id(0, Gtk.SortType.ASCENDING)
+
+        self.props = Gtk.ScrolledWindow()
+        self.propsview = Gtk.TreeView(properties)
+        self.propsview.set_headers_visible(False)
+        self.propsview.set_reorderable(False)
+        col = Gtk.TreeViewColumn("properties")
+        col_cell_propname = Gtk.CellRendererText()
+        col_cell_propvalue = Gtk.CellRendererText()
+        col.pack_start(col_cell_propname, False)
+        col.pack_start(col_cell_propvalue, True)
+        col.add_attribute(col_cell_propname, "text", 0)
+        col.add_attribute(col_cell_propvalue, "text", 1)
+        self.propsview.append_column(col)
+        self.props.add(self.propsview)
+
+        self.pack_start(self.props, True, True, 0)
+
+    def rescale(self, obj, event):
+        if event.type == Gdk.EventType.SCROLL and event.state == Gdk.ModifierType.CONTROL_MASK:
+            _, dx, dy = event.get_scroll_deltas()
+            if dy > 0:
+                self.zoom = 0.95*self.zoom
+            else:
+                self.zoom = 1.05*self.zoom
+            if self.w*self.zoom < 50:
+                return True
+            self.image.set_from_pixbuf(self.im.scale_simple(
+                self.w*self.zoom, self.h*self.zoom, GdkPixbuf.InterpType.BILINEAR))
+            return True
+
+
+class MainWindow(Gtk.Window):
+
+    def __init__(self, files=None):
+        Gtk.Window.__init__(self)
+        self.set_default_size(1200, 1200)
+        self.connect("destroy", Gtk.main_quit)
+        self.connect("key-press-event", self.on_key_event)
+
+        accelerators = Gtk.AccelGroup()
+        self.add_accel_group(accelerators)
+
+        # create a header bar, with a title, search, quite and some other useful buttons
+        # fix autocomplete
+        hb = Gtk.HeaderBar()
+        hb.props.title = "Pdf tag viewer"
+        self.set_titlebar(hb)
+
+        open_pdf_button = Gtk.Button()
+        label = Gtk.Label("open")
+        open_pdf_button.add(label)
+        open_pdf_button.connect("clicked", self.open_pdfs)
+        hb.pack_start(open_pdf_button)
+
+        bquit = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
+        bquit.connect("clicked", Gtk.main_quit)
+        hb.pack_end(bquit)
+
+        self.searchentry = Gtk.SearchEntry()
+        self.searchentry.set_placeholder_text("enter tags here")
+        hb.pack_end(self.searchentry)
+
+        key, mods = Gtk.accelerator_parse("<ctrl>q")
+        bquit.add_accelerator("clicked", accelerators, key, mods, Gtk.AccelFlags.VISIBLE)
+
+        # The main windows
+        # help in window bar to show current key shortcuts
+
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.box.set_homogeneous(False)
+        self.add(self.box)
+
+        self.main = Gtk.Notebook()
+        self.box.pack_start(self.main, True, True, 0)
+
+        #   thumbs overview
+        #   select with up/down/left/right + x or shift-left/up/down/right
+        #   t for edit tag, open entry bar on bottom: show all common tags, create new one when editing as needed
+        #   rotate left/right -> update thumbs and pic + metadata
+        #   load thumbnails from filesystem
+        #   async load thumbnails only load the ones that are visible (lazy loading??)
+        #
+
+        self.scroll = Gtk.ScrolledWindow()
+        self.flow = TagFlowBox()
+        self.flow.connect("child-activated", self.click_on_thumb)
+        self.scroll.add(self.flow)
+        self.main.append_page(self.scroll, Gtk.Label("Pdfs"))
+
+        #   tag view
+        #   use icon for tags if available, tooltip should be name of icon, make icon name unique in DB
+        # use up down, left right to navigate tree, x to mark row, enter to move
+        # it to new cursor location?
+        self.tagstore = MyTagTree()
+
+        self.Tagcompletion = Gtk.EntryCompletion()
+        self.Tagcompletion.set_model(self.tagstore)
+        self.Tagcompletion.set_text_column(1)
+        self.searchentry.set_completion(self.Tagcompletion)
+
+        self.tags = Gtk.ScrolledWindow()
+        self.tagsview = Gtk.TreeView(self.tagstore)
+        self.tagsview.set_headers_visible(False)
+        self.tagsview.set_reorderable(True)
+        col = Gtk.TreeViewColumn("Tag")
+        col_cell_text = Gtk.CellRendererText()
+        col_cell_img = Gtk.CellRendererPixbuf()
+        col.pack_start(col_cell_img, False)
+        col.pack_start(col_cell_text, True)
+        col.add_attribute(col_cell_img, "pixbuf", 0)
+        col.add_attribute(col_cell_text, "text", 1)
+        self.tagsview.append_column(col)
+
+        self.tags.add(self.tagsview)
+        self.tagstore.connect('row-changed', self.reorder_tags_in_DB)
+        self.tagsview.connect('row-activated', self.load_single_tag)
+
+        self.main.append_page(self.tags, Gtk.Label("Tags"))
+
+        # Load some pdfs
+        if files is None:
+            for f in session.query(Pdfs).limit(50).all():
+                new = MyPdf(f)
+                self.flow.add(new)
+
+        self.entry = Gtk.Entry()
+        self.box.pack_start(self.entry, False, False, 0)
+        self.entry.set_completion(self.Tagcompletion)
+        self.entry.set_placeholder_text("modify tags here (or hit t on selected pdfs)")
+
+        self.show_all()
+        self.main.set_current_page(1)
+
+    def keynavfailed(self, *args):
+        print("keynavfailed")
+        return True
+
+    def click_on_thumb(self, obj, child):
+        photo = child.get_child().photo
+        self.main.set_current_page(0)
+
+    def load_single_tag(self, obj, path, col):
+        tree_iter = self.tagstore.get_iter(path)
+        tagname = self.tagstore.get_value(tree_iter, 1)
+        find_parent_with_type(obj, MainWindow).load_tags(None, tags=tagname)
+        find_parent_with_type(obj, MainWindow).main.set_current_page(1)
+
+    def reorder_tags_in_DB(self, tm, path, treeiter):
+        item = tm[treeiter]
+
+        # get current parent in DB
+        oldparent = session.query(Tags).filter(Tags.id == item[2]).first().path.split('.')
+        if len(oldparent) > 1:
+            DBparent = session.query(Tags).filter(Tags.id == oldparent[-2]).first()
+        elif len(oldparent) == 1:
+            DBparent = None
+
+        # get parent in new tree
+        newparent = str(path).split(':')
+        if len(newparent) > 1:
+            newparent = ':'.join(newparent[:-1])
+            target = Gtk.TreeModelRow(tm, Gtk.TreePath.new_from_string(newparent))
+            newparent = session.query(Tags).filter(Tags.id == target[2]).first()
+        else:
+            newparent = None
+
+        # check if we need to change anything
+        if DBparent is None:
+            if newparent is not None:
+                tag = session.query(Tags).filter(Tags.id == item[2]).first()
+                tag.move_to(newparent)
+                session.commit()
+        else:
+            if newparent is None:
+                tag = session.query(Tags).filter(Tags.id == item[2]).first()
+                tag.move_to(None)
+                session.commit()
+            else:
+                if DBparent.id != newparent.id:
+                    tag = session.query(Tags).filter(Tags.id == item[2]).first()
+                    tag.move_to(newparent)
+                    session.commit()
+        return True
+
+    def image_move(self, direction, select=None):
+        child = self.flow.get_current()
+        all = self.flow.get_children()
+        i = all.index(child)
+        if direction == "Left":
+            steps = -1
+        elif direction == "Right":
+            steps = 1
+        elif direction == "Up":
+            steps = -self.flow.get_childs_per_line()
+        elif direction == "Down":
+            steps = self.flow.get_childs_per_line()
+        else:
+            print("Error calculating stesp for: ", direction)
+            steps = 1
+        if 0 <= i+steps < len(all):
+            next = i+steps
+        elif i+steps < 0:
+            next = 0
+        else:
+            next = -1
+        if select:
+            # print("need to select items", next, i)
+            if next < i:
+                for j in range(next, i):
+                    self.flow.select_child(all[j])
+            else:
+                for j in range(i+1, next+1):
+                    self.flow.select_child(all[j])
+        all[next].do_grab_focus(all[next])
+        self.flow.current = all[next]
+        self.flow.queue_draw()
+        if not all[next].get_visible():
+            print("need to scroll")
+        return True
+
+    def on_key_event(self, widget, event):
+        shortcut = Gtk.accelerator_get_label(event.keyval, event.state)
+        # print("got key event:", shortcut)
+
+        # ignore all Mod keys (could be NumLock for example)
+        keys = shortcut.split("+")
+        shortcut = "+".join([k for k in keys if not k.startswith('Mod')])
+
+        # map OS X to linux shortcuts
+        OSX = {"←": "Left",
+               "→": "Right",
+               "↑": "Up",
+               "↓": "Down",
+               "⇧": "Shift+"}
+        tmp = ""
+        for c in shortcut:
+            if c in OSX:
+                tmp = tmp+OSX[c]
+            else:
+                tmp = tmp+c
+        shortcut = tmp
+        # print("after filter:", shortcut)
+
+        # if we are in search mode, disable other shortcuts
+        if self.searchentry.has_focus():
+            if shortcut == "Return":
+                text = self.searchentry.get_text()
+                self.load_tags(None, tags=text)
+        elif self.entry.has_focus():
+            if shortcut == "Return":
+                text = self.entry.get_text()
+                tags = [t.strip() for t in text.split(',')]
+                tags_add = [t for t in tags if t not in self.selected_tags and t != ""]
+                tags_delete = [t for t in self.selected_tags if t not in tags]
+                for s in self.flow.get_selected_children():
+                    for t in tags_add:
+                        new = session.query(Tags).filter(Tags.name == t).first()
+                        if new is None:
+                            new = Tags(name=t)
+                            session.add(new)
+                        s.get_child().pdf.add_tag(new)
+                    for t in tags_delete:
+                        tag = session.query(Tags).filter(Tags.name == t).first()
+                        s.get_child().pdf.remove_tag(tag)
+                    s.get_child().update_tags()
+                session.commit()
+                thumb = self.flow.get_current()
+                thumb.do_grab_focus(thumb)
+                return True
+            return False
+        else:
+            if shortcut in ("Ctrl+F", "/"):
+                self.searchentry.do_grab_focus(self.searchentry)
+                return True  # prevents '/' from being added to the searchbar
+            elif shortcut == "O":
+                self.open_pdfs(True)
+                return True
+            elif shortcut == "T":
+                self.entry.do_grab_focus(self.entry)
+                selected = self.flow.get_selected_children()
+                # find all common tags
+                tags = [set(s.get_child().pdf.tags) for s in selected]
+                if len(tags):
+                    tags = set.intersection(*tags)
+                    tags = [t.name for t in tags]
+                self.selected_tags = tags
+                self.entry.set_text(", ".join(sorted(tags))+", ")
+                self.entry.emit("move_cursor", 1, Gtk.MovementStep.DISPLAY_LINE_ENDS, False)
+                return True
+            elif shortcut in ["Left", "Right", "Up", "Down"]:
+                # print("cursor move")
+                self.image_move(shortcut)
+                return True
+            elif shortcut in ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down"]:
+                # print("shift select")
+                self.image_move(shortcut[6:], select=True)
+                return True
+            elif shortcut == "Tab":
+                page = self.main.get_current_page()
+                N = self.main.get_n_pages()
+                self.main.set_current_page((page+1) % N)
+                if page+1 == 2:
+                    self.entry.hide()
+                else:
+                    self.entry.show()
+                return True
+            elif shortcut == "Shift+Left Tab":
+                page = self.main.get_current_page()
+                N = self.main.get_n_pages()
+                if page == 0:
+                    self.entry.hide()
+                else:
+                    self.entry.show()
+                self.main.set_current_page((page-1) % N)
+                return True
+            elif shortcut in ["X", "Space"]:
+                # print("Got select")
+                sel = self.flow.get_focus_child()
+                if not sel.is_selected():
+                    self.flow.select_child(sel)
+                else:
+                    self.flow.unselect_child(sel)
+                return True
+
+    def open_pdfs(self, objects):
+        for s in self.flow.get_selected_children():
+            filename = s.get_child().pdf.path
+            print(filename)
+            subprocess.Popen([pdfviewer, filename],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+
+    def load_tags(self, objects, tags="Frances"):
+        alltags = []
+        for i in session.query(Tags).filter(Tags.name == tags).all():
+            alltags += i.all_tags()
+        # print(alltags)
+        pdfs = []
+        for i in alltags:
+            pdfs += i.pdfs
+
+        # delete old images
+        for i in self.flow.get_children():
+            i.destroy()
+
+        # create new ones
+        for f in pdfs[:50]:
+            new = MyPdf(f)
+            self.flow.add(new)
+        self.flow.show_all()
+
+    def load_tags2(self, object):
+        all = session.query(Tags).all()
+        tag = random.choice(all)
+        print("loading ", tag.name)
+        self.load_tags(None, tags=tag.name)
+
+if __name__== "__main__":
+
+    # for now always check for new pdfs during startup
+    for root, dirs, files in os.walk(searchpath):
+        for f in files:
+            if f.endswith('pdf'):
+                fullpath = os.path.join(root, f)
+                print("->", fullpath)
+                md5hash = md5(fullpath)
+                if session.query(Pdfs).filter(Pdfs.md5 == md5hash).first():
+                    print("  already in database")
+                else:
+                    print("  Adding to database")
+                    print("  ", md5hash)
+                    new = Pdfs(path=fullpath,
+                               md5=md5hash,
+                               comment="",
+                               other_versions=None,
+                               date=datetime.fromtimestamp(os.path.getctime(fullpath)))
+                    session.add(new)
+    session.commit()
+
+    print("----")
+
+    win = MainWindow()
+    win.connect("delete-event", Gtk.main_quit)
+    win.show_all()
+    display = Gdk.Display.get_default()
+    screen = display.get_default_screen()
+
+    css_provider = Gtk.CssProvider()
+
+    gtk3Css = """
+                flowboxchild:focus
+                {
+                    box-shadow: inset 0px 0px 0px 2px #f00;
+                }
+    """
+    css_provider.load_from_data(bytes(gtk3Css.encode()))
+    context = Gtk.StyleContext()
+    context.add_provider_for_screen(screen, css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    Gtk.main()

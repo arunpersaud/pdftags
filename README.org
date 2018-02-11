@@ -1,0 +1,56 @@
+#+STARTUP: overview
+#+SEQ_TODO: TODO STARTED NEXT WAITING | DONE DEFERRED CANCEL
+#+STARTUP: hidestars
+#+STARTUP: logdone
+#+STARTUP: lognotestats
+
+  both should work well with DOI, for crossref you get a score back that one can check
+
+   user interface
+     text or qt
+
+     search
+     results-> list of files
+     single file (current one in results)
+       if single file:
+          show bibtex in form
+          show bibtex as text to copy
+       if multiple:
+          show common entries, otherwise only tag
+
+     edit of fields:
+        autocomplete from DB for author, tags, journal
+
+     open marked files or all in results
+
+     or
+       show tag hierachy
+
+     keyboard shortcuts:
+        tag
+        edit entries
+	copy entry to clibboard
+	open file(s)
+
+     listen to file changes in directory
+
+     helpers:
+        cron job to find new ones
+        find douplicates by doi/md5, allow for annotated version
+
+     config:
+        api keys?
+        pdf viewer
+        directory for pdfs
+	name of annotated version
+
+   db
+     md5 of file, path, ctime, etc (so that we can check, if we need to automatically check)
+     doi, author, title, ... (all bibtex entries that we normally use)
+     link to annotated version
+
+
+     automatically find all finds in folder (that have DOI?)
+     flag for each field if we overwrite it? or always show our entries and original crossref and gscholar
+ 
+     https://www.crossref.org/labs/resolving-citations-we-dont-need-no-stinkin-parser/
