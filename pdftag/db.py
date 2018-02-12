@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, ForeignKey, String, Column, DateTime, BLOB, Float, Table
+from sqlalchemy import Integer, ForeignKey, String, Column, DateTime, BLOB, Float, Table, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, remote, foreign
 from sqlalchemy import create_engine, event
@@ -15,6 +15,10 @@ pdftag_table = Table('pdftag', Base.metadata,
                      Column('pdf_id', Integer, ForeignKey('pdfs.id')),
                      Column('tags_id', Integer, ForeignKey('tags.id')))
 
+# many to many relationship between pdfs and people
+pdfpeople_table = Table('pdfpeople', Base.metadata,
+                        Column('pdf_id', Integer, ForeignKey('pdfs.id')),
+                        Column('people_id', Integer, ForeignKey('people.id')))
 
 class Pdfs(Base):
     """Keep all the information for a single pdf"""
@@ -22,7 +26,7 @@ class Pdfs(Base):
 
     # first a list of standard items
     id = Column(Integer, primary_key=True)
-    date = Column(DateTime, index=True)
+    date = Column(DateTime, index=True)  # file creation date
     comment = Column(String)
     path = Column(String)
     md5 = Column(String(32), index=True)
@@ -31,8 +35,20 @@ class Pdfs(Base):
     # keep a linked list here
     other_versions = Column(Integer, ForeignKey('pdfs.id'))
 
-    # what tags are related to this photo
+    # what tags are related to this Pdf
     tags = relationship("Tags", secondary=pdftag_table, backref="pdfs")
+
+    # Metadata for this Pdf
+    metadata_complete = Column(Boolean)
+    authors = relationship("People", secondary=pdfpeople_table, backref="pdfs")
+    title = Column(String)
+    doi = Column(String)
+    journal_id = Column(Integer, ForeignKey('journals.id'))
+    journal = relationship("Journals")
+    volume = Column(String)
+    number = Column(String)
+    pages = Column(String)
+    year = Column(Integer)
 
     def __repr__(self):
         return "{}->{} (tags:{})\n".format(self.id, self.path, self.tags)
@@ -94,6 +110,27 @@ def set_default_path(mapper, connection, target):
         t = Tags.__table__
         connection.execute(t.update().where(t.c.id == target.id).
                            values(path=str(target.id)))
+
+
+class People(Base):
+    """List of authors"""
+    __tablename__ = 'people'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    email = Column(String)
+    institute = Column(String)
+
+    def __repr__(self):
+        return "{}->{} {} {}\n".format(self.id, self.name, self.email, self.institute)
+
+
+class Journals(Base):
+    """List of journals"""
+    __tablename__ = 'journals'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
 
 # create tables
 if not os.path.exists('pdf.db'):
