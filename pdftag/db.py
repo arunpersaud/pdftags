@@ -63,6 +63,14 @@ class Pdfs(Base):
             print("tag '{}' not found for {} with tags: {}".format(
                 t.name, self.path, ",".join([i.name for i in self.tags])))
 
+    def bibtex(self):
+        author = 'author = "{}",\n'.format("and".join([a.name for a in self.authors]))
+        title = 'title = "{}",\n'.format(self.title)
+        journal = 'journal = "{}",\n'.format(self.journal.name)
+        number = 'number = "{}",\n'.format(self.number)
+        pages = 'pages = "{}",\n'.format(self.pages)
+        year = 'year = "{}",\n'.format(self.year)
+        return '@article{{ xyz, \n' + author + title + number + pages + year +'}}\n'
 
 class Tags(Base):
     """Used a materialized path pattern to generate a tag list.
