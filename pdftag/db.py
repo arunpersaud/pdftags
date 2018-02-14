@@ -95,7 +95,7 @@ class Tags(Base):
                           primaryjoin=remote(foreign(path)).like(path.concat(".%")))
 
     def __repr__(self):
-        return "{} ({})".format(self.name, self.id)
+        return "Tag: {} ({})".format(self.name, self.id)
 
     def move_to(self, new_parent):
         if new_parent is not None:
@@ -130,7 +130,7 @@ class People(Base):
     institute = Column(String)
 
     def __repr__(self):
-        return "{}->{} {} {}\n".format(self.id, self.name, self.email, self.institute)
+        return "Person: {}->{} {} {}\n".format(self.id, self.name, self.email, self.institute)
 
 
 class Journals(Base):
@@ -139,6 +139,9 @@ class Journals(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String)
+
+    def __repr__(self):
+        return "Journal: {}->{}\n".format(self.id, self.name)
 
 # create tables
 if not os.path.exists('pdf.db'):
