@@ -116,7 +116,8 @@ class MyPdf(Gtk.Box):
         new = Gtk.Button()
         filename = os.path.basename(pdf.path)
         date = str(pdf.date)
-        label = Gtk.Label("name: {}\ndate: {}".format(filename, date))
+        complete = "yes" if pdf.metadata_complete else "no"
+        label = Gtk.Label("name: {}\ndate: {}\n complete: {}".format(filename, date, complete))
         new.add(label)
 
         self.pack_start(new, True, True, 0)
@@ -200,8 +201,11 @@ class TagFlowBox(Gtk.FlowBox):
         print("failed: ", *args)
 
     def click_on_thumb(self, widget, element):
-        print("got a click: ", element.get_child().photo.tags)
-        self.current = element.get_child()
+        print("got a click: ", element.get_child().pdf.path)
+        if not element.is_selected():
+            self.flow.select_child(element)
+        else:
+            self.flow.unselect_child(element)
 
 
 class SingleImage(Gtk.Box):
@@ -347,11 +351,26 @@ class MainWindow(Gtk.Window):
         #   async load thumbnails only load the ones that are visible (lazy loading??)
         #
 
+        self.pdfbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.pdfbox.set_homogeneous(False)
         self.scroll = Gtk.ScrolledWindow()
         self.flow = TagFlowBox()
         self.flow.connect("child-activated", self.click_on_thumb)
         self.scroll.add(self.flow)
-        self.main.append_page(self.scroll, Gtk.Label("Pdfs"))
+        self.pdfbox.pack_start(self.scroll, True, True, 0)
+        self.pdfinfo = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.title = Gtk.Label("Title:")
+        self.authors = Gtk.Label("Authors:")
+        self.journal = Gtk.Label("Journal:")
+        self.ref = Gtk.Label("Volume:    Pages:")
+        self.doi = Gtk.Label("Doi:")
+        self.pdfinfo.pack_start(self.title, False, False, 0)
+        self.pdfinfo.pack_start(self.authors, False, False, 0)
+        self.pdfinfo.pack_start(self.journal, False, False, 0)
+        self.pdfinfo.pack_start(self.ref, False, False, 0)
+        self.pdfinfo.pack_start(self.doi, False, False, 0)
+        self.pdfbox.pack_start(self.pdfinfo, False, False, 0)
+        self.main.append_page(self.pdfbox, Gtk.Label("Pdfs"))
 
         #   tag view
         #   use icon for tags if available, tooltip should be name of icon, make icon name unique in DB
@@ -383,6 +402,9 @@ class MainWindow(Gtk.Window):
 
         self.main.append_page(self.tags, Gtk.Label("Tags"))
 
+        self.bibtex = Gtk.Label("Add bibtex here of all selected pdfs")
+        self.main.append_page(self.bibtex, Gtk.Label("Bibtex"))
+
         # Load some pdfs
         if files is None:
             for f in session.query(Pdfs).limit(50).all():
@@ -402,8 +424,11 @@ class MainWindow(Gtk.Window):
         return True
 
     def click_on_thumb(self, obj, child):
-        photo = child.get_child().photo
-        self.main.set_current_page(0)
+        element = child.get_child()
+        if not element.is_selected():
+            self.flow.select_child(element)
+        else:
+            self.flow.unselect_child(element)
 
     def load_single_tag(self, obj, path, col):
         tree_iter = self.tagstore.get_iter(path)
@@ -721,6 +746,8 @@ if __name__== "__main__":
     css_provider.load_from_data(bytes(gtk3Css.encode()))
     context = Gtk.StyleContext()
     context.add_provider_for_screen(screen, css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+
+    win.main.set_current_page(0)
 
     Gtk.main()
     Session.remove()
