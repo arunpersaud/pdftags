@@ -21,14 +21,11 @@ import gscholar
 from datetime import datetime
 
 from appdirs import AppDirs
-import cairo
 import gi
 gi.require_version('Gtk', '3.0')
 gi.require_version('Gdk', '3.0')
-import piexif
 from docopt import docopt
 from gi.repository import Gdk, GdkPixbuf, Gtk, Pango
-from PIL import Image
 from tqdm import tqdm
 
 from pdftag.db import Pdfs, Tags, People, Journals
@@ -38,24 +35,24 @@ import pdftag
 Session = scoped_session(pdftag.db.session)
 
 commands = docopt(__doc__)
-#print(commands)
+# print(commands)
 
 appdirs = AppDirs("pdftags")
-#print(appdirs.user_data_dir)
-#print(appdirs.user_config_dir)
+# print(appdirs.user_data_dir)
+# print(appdirs.user_config_dir)
 
 # load config data
 config = configparser.ConfigParser()
 config.read(os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
 #print("config entries")
-#for key in config:
+# for key in config:
 #   print(key)
 #   for k in config[key]:
 #       print("   ", k, ":", config[key][k])
 searchpath = config.get('Pdfs', 'path', fallback=None)
 if searchpath is None:
     print("The config file was missing, please edit")
-    print("   ",os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
+    print("   ", os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
     print("and add the path to your pdfs")
 
     with open(os.path.join(appdirs.user_config_dir, 'pdftags.ini'), "w") as f:
@@ -66,13 +63,14 @@ if searchpath is None:
 pdfviewer = config.get('Pdfs', 'viewer', fallback=None)
 if pdfviewer is None:
     print("Please add a pdfviewer to your ini file at")
-    print("   ",os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
+    print("   ", os.path.join(appdirs.user_config_dir, 'pdftags.ini'))
     print(" (add a 'viewer=<path/name>' to the [Pdfs] section")
 else:
     if shutil.which(pdfviewer) is None:
-        print("Can't find pdf viewer:",  pdfviewer)
+        print("Can't find pdf viewer:", pdfviewer)
 
 extensiondir = config.get('Extension', 'path', fallback=None)
+
 
 def find_parent_with_type(obj, cls):
     """Find a certain parent or grand^n-parent of an object"""
@@ -80,12 +78,14 @@ def find_parent_with_type(obj, cls):
         obj = obj.get_parent()
     return obj
 
+
 def md5(fname):
     hash_md5 = hashlib.md5()
     with open(fname, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
             hash_md5.update(chunk)
     return hash_md5.hexdigest()
+
 
 class MyTag(Gtk.Button):
 
@@ -633,7 +633,7 @@ class MainWindow(Gtk.Window):
                         authors = bibtex['author'].split('and')
                         print("found authors", authors)
                         if pdf.authors is None:
-                            pdf.authors=[]
+                            pdf.authors = []
                         for a in authors:
                             if not session.query(People).filter(People.name == a).first():
                                 p = People(name=a)
@@ -661,7 +661,7 @@ class MainWindow(Gtk.Window):
                         pdf.year = bibtex['year']
                     session.commit()
                     print("done")
-                    #print(pdf.bibtex())
+                    # print(pdf.bibtex())
                 return True
 
     def open_pdfs(self, objects):
@@ -697,6 +697,7 @@ class MainWindow(Gtk.Window):
         print("loading ", tag.name)
         self.load_tags(None, tags=tag.name)
 
+
 def search_for_new_pdfs():
     # for now always check for new pdfs during startup
     print("----start pdf search-----")
@@ -723,7 +724,7 @@ def search_for_new_pdfs():
     print("----finished pdf search-----")
 
 
-if __name__== "__main__":
+if __name__ == "__main__":
 
     search_thread = threading.Thread(target=search_for_new_pdfs)
     search_thread.start()
