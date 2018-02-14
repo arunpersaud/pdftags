@@ -15,6 +15,9 @@ import subprocess
 import shutil
 import time
 import threading
+import slate3k
+import bibtexparser
+import gscholar
 from datetime import datetime
 
 from appdirs import AppDirs
@@ -28,7 +31,7 @@ from gi.repository import Gdk, GdkPixbuf, Gtk, Pango
 from PIL import Image
 from tqdm import tqdm
 
-from pdftag.db import Pdfs, Tags
+from pdftag.db import Pdfs, Tags, People, Journals
 
 from sqlalchemy.orm import scoped_session
 import pdftag
@@ -581,6 +584,59 @@ class MainWindow(Gtk.Window):
                     self.flow.select_child(sel)
                 else:
                     self.flow.unselect_child(sel)
+            elif shortcut in ["L"]:
+                # print("Got select")
+                pdf = self.flow.get_focus_child().get_child().pdf
+                print(pdf.path)
+                with open(pdf.path, "rb") as f:
+                    doc = slate3k.PDF(f)
+                doi = None
+                for i in doc:
+                    if 'doi' in i:
+                        start = i.find('doi')
+                        stop = i.find("\n", start)
+                        doi = i[start+4:stop]
+                if doi is not None:
+                    print("commiting to database")
+                    pdf.doi = doi
+                    out = gscholar.query(doi)
+                    bibtex = bibtexparser.loads(out[0]).entries[0]
+                    print("got bibtex:", bibtex)
+                    if 'title' in bibtex:
+                        pdf.title = bibtex['title']
+                    if 'author' in bibtex:
+                        authors = bibtex['author'].split('and')
+                        print("found authors", authors)
+                        if pdf.authors is None:
+                            pdf.authors=[]
+                        for a in authors:
+                            if not session.query(People).filter(People.name == a).first():
+                                p = People(name=a)
+                                print(p)
+                                session.add(p)
+                                session.flush()
+                                pdf.authors.append(p)
+                    if 'journal' in bibtex:
+                        if not session.query(Journals).filter(Journals.name == bibtex['journal']).first():
+                            j = Journals(name=bibtex['journal'])
+                            print(j)
+                            session.add(j)
+                            session.flush()
+                            if pdf.journal is not None:
+                                pdf.journal.append(j)
+                            else:
+                                pdf.journal = j
+                    if 'volume' in bibtex:
+                        pdf.volume = bibtex['volume']
+                        print("setting volume", pdf.volume)
+                    if 'pages' in bibtex:
+                        pdf.pages = bibtex['pages']
+                        print("setting pages", pdf.pages)
+                    if 'year' in bibtex:
+                        pdf.year = bibtex['year']
+                    session.commit()
+                    print("done")
+                    #print(pdf.bibtex())
                 return True
 
     def open_pdfs(self, objects):
