@@ -137,4 +137,4 @@ if not os.path.exists('pdf.db'):
     Base.metadata.create_all(engine)
 
 # create a Session
-session = sessionmaker(bind=engine)()
+session = sessionmaker(bind=engine)

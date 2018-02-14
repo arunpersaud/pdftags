@@ -14,6 +14,7 @@ import sys
 import subprocess
 import shutil
 import time
+import threading
 from datetime import datetime
 
 from appdirs import AppDirs
@@ -27,8 +28,11 @@ from gi.repository import Gdk, GdkPixbuf, Gtk, Pango
 from PIL import Image
 from tqdm import tqdm
 
-from pdftag.db import Pdfs, Tags, session
+from pdftag.db import Pdfs, Tags
+
+from sqlalchemy.orm import scoped_session
 import pdftag
+Session = scoped_session(pdftag.db.session)
 
 commands = docopt(__doc__)
 #print(commands)
@@ -133,6 +137,7 @@ class MyTagTree(Gtk.TreeStore):
     def __init__(self):
         super().__init__(Gtk.Image, str, int)
         parents = {}
+        session = scoped_session(pdftag.db.session)()
         for t in session.query(Tags).order_by(Tags.path).all():
             path = t.path.split(".")
             if len(path) >= 2:
@@ -150,6 +155,7 @@ class MyTagTree(Gtk.TreeStore):
         # sort once
         self.set_sort_column_id(1, Gtk.SortType.ASCENDING)
         self.set_sort_column_id(Gtk.TREE_SORTABLE_UNSORTED_SORT_COLUMN_ID, Gtk.SortType.ASCENDING)
+        Session.remove()
 
     def compare(self, model, row1, row2, user_data):
         value1 = model.get_value(row1, 1)
@@ -377,10 +383,12 @@ class MainWindow(Gtk.Window):
         self.main.append_page(self.tags, Gtk.Label("Tags"))
 
         # Load some pdfs
+        session = scoped_session(pdftag.db.session)()
         if files is None:
             for f in session.query(Pdfs).limit(50).all():
                 new = MyPdf(f)
                 self.flow.add(new)
+        Session.remove()
 
         self.entry = Gtk.Entry()
         self.box.pack_start(self.entry, False, False, 0)
@@ -406,7 +414,7 @@ class MainWindow(Gtk.Window):
 
     def reorder_tags_in_DB(self, tm, path, treeiter):
         item = tm[treeiter]
-
+        session = scoped_session(pdftag.db.session)()
         # get current parent in DB
         oldparent = session.query(Tags).filter(Tags.id == item[2]).first().path.split('.')
         if len(oldparent) > 1:
@@ -439,6 +447,7 @@ class MainWindow(Gtk.Window):
                     tag = session.query(Tags).filter(Tags.id == item[2]).first()
                     tag.move_to(newparent)
                     session.commit()
+        Session.remove()
         return True
 
     def image_move(self, direction, select=None):
@@ -499,7 +508,6 @@ class MainWindow(Gtk.Window):
                 tmp = tmp+c
         shortcut = tmp
         # print("after filter:", shortcut)
-
         # if we are in search mode, disable other shortcuts
         if self.searchentry.has_focus():
             if shortcut == "Return":
@@ -507,6 +515,7 @@ class MainWindow(Gtk.Window):
                 self.load_tags(None, tags=text)
         elif self.entry.has_focus():
             if shortcut == "Return":
+                session = scoped_session(pdftag.db.session)()
                 text = self.entry.get_text()
                 tags = [t.strip() for t in text.split(',')]
                 tags_add = [t for t in tags if t not in self.selected_tags and t != ""]
@@ -525,6 +534,7 @@ class MainWindow(Gtk.Window):
                 session.commit()
                 thumb = self.flow.get_current()
                 thumb.do_grab_focus(thumb)
+                Session.remove()
                 return True
             return False
         else:
@@ -591,6 +601,7 @@ class MainWindow(Gtk.Window):
 
     def load_tags(self, objects, tags="Frances"):
         alltags = []
+        session = scoped_session(pdftag.db.session)()
         for i in session.query(Tags).filter(Tags.name == tags).all():
             alltags += i.all_tags()
         # print(alltags)
@@ -607,16 +618,20 @@ class MainWindow(Gtk.Window):
             new = MyPdf(f)
             self.flow.add(new)
         self.flow.show_all()
+        Session.remove()
 
     def load_tags2(self, object):
+        session = scoped_session(pdftag.db.session)()
         all = session.query(Tags).all()
         tag = random.choice(all)
         print("loading ", tag.name)
         self.load_tags(None, tags=tag.name)
+        Session.remove()
 
-if __name__== "__main__":
-
+def search_for_new_pdfs():
     # for now always check for new pdfs during startup
+    print("----start pdf search-----")
+    session = Session()
     for root, dirs, files in os.walk(searchpath):
         for f in files:
             if f.endswith('pdf'):
@@ -635,8 +650,14 @@ if __name__== "__main__":
                                date=datetime.fromtimestamp(os.path.getctime(fullpath)))
                     session.add(new)
     session.commit()
+    Session.remove()
+    print("----finished pdf search-----")
 
-    print("----")
+
+if __name__== "__main__":
+
+    search_thread = threading.Thread(target=search_for_new_pdfs)
+    search_thread.start()
 
     win = MainWindow()
     win.connect("delete-event", Gtk.main_quit)
