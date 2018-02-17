@@ -203,9 +203,9 @@ class TagFlowBox(Gtk.FlowBox):
     def click_on_thumb(self, widget, element):
         print("got a click: ", element.get_child().pdf.path)
         if not element.is_selected():
-            self.flow.select_child(element)
+            self.select_child(element)
         else:
-            self.flow.unselect_child(element)
+            self.unselect_child(element)
 
 
 class SingleImage(Gtk.Box):
@@ -358,18 +358,51 @@ class MainWindow(Gtk.Window):
         self.flow.connect("child-activated", self.click_on_thumb)
         self.scroll.add(self.flow)
         self.pdfbox.pack_start(self.scroll, True, True, 0)
-        self.pdfinfo = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.title = Gtk.Label("Title:")
+
+        # metadata from pdf: journal, title, etc.
+        self.metadata = Gtk.Grid()
+        self.metadata.set_row_spacing(3)
+        self.metadata.set_column_spacing(5)
+        self.metadata.set_property('margin', 4)
+        self.title_label = Gtk.Label("Title:")
+        self.title_label.set_alignment(0, 0)
+        self.title = Gtk.Label("")
+        self.title.set_alignment(0, 0)
+        self.authors_label = Gtk.Label("Authors:")
+        self.authors_label.set_alignment(0, 0)
         self.authors = Gtk.Label("Authors:")
-        self.journal = Gtk.Label("Journal:")
-        self.ref = Gtk.Label("Volume:    Pages:")
-        self.doi = Gtk.Label("Doi:")
-        self.pdfinfo.pack_start(self.title, False, False, 0)
-        self.pdfinfo.pack_start(self.authors, False, False, 0)
-        self.pdfinfo.pack_start(self.journal, False, False, 0)
-        self.pdfinfo.pack_start(self.ref, False, False, 0)
-        self.pdfinfo.pack_start(self.doi, False, False, 0)
-        self.pdfbox.pack_start(self.pdfinfo, False, False, 0)
+        self.authors.set_alignment(0, 0)
+        self.journal_label = Gtk.Label("Journal:")
+        self.journal_label.set_alignment(0, 0)
+        self.journal = Gtk.Label("")
+        self.journal.set_alignment(0, 0)
+        self.volume_label = Gtk.Label("Volume:")
+        self.volume_label.set_alignment(0, 0)
+        self.volume = Gtk.Label("")
+        self.volume.set_alignment(0, 0)
+        self.pages_label = Gtk.Label("Pages:")
+        self.pages_label.set_alignment(0, 0)
+        self.pages = Gtk.Label("")
+        self.pages.set_alignment(0, 0)
+        self.doi_label = Gtk.Label("Doi:")
+        self.doi_label.set_alignment(0, 0)
+        self.doi = Gtk.Label("")
+        self.doi.set_alignment(0, 0)
+        self.metadata.attach(self.title_label, 0, 0, 1 ,1)
+        self.metadata.attach(self.title, 1, 0, 1, 1)
+        self.metadata.attach(self.authors_label, 0, 1, 1, 1)
+        self.metadata.attach(self.authors, 1, 1, 1, 1)
+        self.metadata.attach(self.journal_label, 0, 2, 1, 1)
+        self.metadata.attach(self.journal, 1, 2, 1, 1)
+        self.metadata.attach(self.volume_label, 0, 3, 1, 1)
+        self.metadata.attach(self.volume, 1, 3, 1, 1)
+        self.metadata.attach(self.pages_label, 0, 4, 1, 1)
+        self.metadata.attach(self.pages, 1, 4, 1, 1)
+        self.metadata.attach(self.doi_label, 0, 5, 1, 1)
+        self.metadata.attach(self.doi, 1, 5, 1, 1)
+        # end metadata
+
+        self.pdfbox.pack_start(self.metadata, False, False, 0)
         self.main.append_page(self.pdfbox, Gtk.Label("Pdfs"))
 
         #   tag view
@@ -424,11 +457,12 @@ class MainWindow(Gtk.Window):
         return True
 
     def click_on_thumb(self, obj, child):
-        element = child.get_child()
-        if not element.is_selected():
-            self.flow.select_child(element)
-        else:
-            self.flow.unselect_child(element)
+        print("click", obj, child)
+        # child seems to be always activated in this method, not sure how to fix this
+        # if not child.is_selected():
+        #     self.flow.select_child(child)
+        # else:
+        #    self.flow.unselect_child(child)
 
     def load_single_tag(self, obj, path, col):
         tree_iter = self.tagstore.get_iter(path)
@@ -503,6 +537,35 @@ class MainWindow(Gtk.Window):
                     self.flow.select_child(all[j])
         all[next].do_grab_focus(all[next])
         self.flow.current = all[next]
+        pdf = self.flow.current.get_child().pdf
+        if pdf.title:
+            self.title.set_text(pdf.title)
+        else:
+            self.title.set_text('')
+        if pdf.authors:
+            self.authors.set_text(' and '.join(a.name for a in pdf.authors))
+        else:
+            self.authors.set_text('')
+        if pdf.journal:
+            self.journal.set_text(pdf.journal.name)
+        else:
+            self.journal.set_text('')
+        if pdf.volume:
+            if pdf.number:
+                self.volume.set_text("{} ({})".format(pdf.volume, pdf.number))
+            else:
+                self.volume.set_text(pdf.volume)
+        else:
+            self.volume.set_text('')
+        if pdf.pages:
+            self.pages.set_text(pdf.pages)
+        else:
+            self.pages.set_text('')
+        if pdf.doi:
+            self.doi.set_markup('<a href="https://dx.doi.org/{0}">{0}</a>'.format(pdf.doi))
+        else:
+            self.doi.set_text('')
+
         self.flow.queue_draw()
         if not all[next].get_visible():
             print("need to scroll")
