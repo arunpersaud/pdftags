@@ -64,13 +64,42 @@ class Pdfs(Base):
                 t.name, self.path, ",".join([i.name for i in self.tags])))
 
     def bibtex(self):
-        author = 'author = "{}",\n'.format("and".join([a.name for a in self.authors]))
-        title = 'title = "{}",\n'.format(self.title)
-        journal = 'journal = "{}",\n'.format(self.journal.name)
-        number = 'number = "{}",\n'.format(self.number)
-        pages = 'pages = "{}",\n'.format(self.pages)
-        year = 'year = "{}",\n'.format(self.year)
-        return '@article{{ xyz, \n' + author + title + number + pages + year +'}}\n'
+        l = 'xyz'
+        if self.authors:
+            a = '  author = "{}",\n'.format("and".join(a.name for a in self.authors))
+            l = self.authors[0].name
+            l = l.split(',')[0]
+        else:
+            a = ''
+        if self.title:
+            t = '  title = "{}",\n'.format(self.title)
+        else:
+            t = ''
+        if self.journal:
+            j = '  journal = "{}",\n'.format(self.journal.name)
+        else:
+            j = ''
+        if self.number:
+            n = '  number = "{}",\n'.format(self.number)
+        else:
+            n = ''
+        if self.pages:
+            p = '  pages = "{}",\n'.format(self.pages)
+        else:
+            p = ''
+        if self.year:
+            y = '  year = "{}",\n'.format(self.year)
+            l = l+str(self.year)
+        else:
+            y = ''
+        l = l + ',\n'
+
+        all = '@article{'+ l + a + t + j + n + p + y
+        # remove last ',\n'
+        all = all[:-2]
+        all = all + '\n}\n'
+
+        return all
 
 class Tags(Base):
     """Used a materialized path pattern to generate a tag list.

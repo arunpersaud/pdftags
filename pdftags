@@ -433,10 +433,13 @@ class MainWindow(Gtk.Window):
         self.tagstore.connect('row-changed', self.reorder_tags_in_DB)
         self.tagsview.connect('row-activated', self.load_single_tag)
 
-        self.main.append_page(self.tags, Gtk.Label("Tags"))
-
+        self.bibtex_view = Gtk.ScrolledWindow()
         self.bibtex = Gtk.Label("Add bibtex here of all selected pdfs")
-        self.main.append_page(self.bibtex, Gtk.Label("Bibtex"))
+        self.bibtex.set_selectable(True)
+        self.bibtex_view.add(self.bibtex)
+        self.main.append_page(self.bibtex_view, Gtk.Label("Bibtex"))
+
+        self.main.append_page(self.tags, Gtk.Label("Tags"))
 
         # Load some pdfs
         if files is None:
@@ -650,20 +653,26 @@ class MainWindow(Gtk.Window):
             elif shortcut == "Tab":
                 page = self.main.get_current_page()
                 N = self.main.get_n_pages()
-                self.main.set_current_page((page+1) % N)
-                if page+1 == 2:
-                    self.entry.hide()
-                else:
+                newpage = (page+1) % N
+                if newpage == 0:
                     self.entry.show()
+                else:
+                    self.entry.hide()
+                if newpage == 1:
+                    self.update_bibtex()
+                self.main.set_current_page(newpage)
                 return True
             elif shortcut == "Shift+Left Tab":
                 page = self.main.get_current_page()
                 N = self.main.get_n_pages()
-                if page == 0:
+                newpage = (page-11) % N
+                if newpage == 0:
                     self.entry.hide()
                 else:
                     self.entry.show()
-                self.main.set_current_page((page-1) % N)
+                if newpage == 1:
+                    self.update_bibtex()
+                self.main.set_current_page(newpage)
                 return True
             elif shortcut in ["X", "Space"]:
                 # print("Got select")
@@ -759,6 +768,10 @@ class MainWindow(Gtk.Window):
         tag = random.choice(all)
         print("loading ", tag.name)
         self.load_tags(None, tags=tag.name)
+
+    def update_bibtex(self):
+        text = "\n".join(s.get_child().pdf.bibtex() for s in self.flow.get_selected_children())
+        self.bibtex.set_text(text)
 
 
 def search_for_new_pdfs():
