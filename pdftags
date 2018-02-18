@@ -72,6 +72,7 @@ else:
 extensiondir = config.get('Extension', 'path', fallback=None)
 
 
+
 def find_parent_with_type(obj, cls):
     """Find a certain parent or grand^n-parent of an object"""
     while type(obj) != cls:
@@ -113,12 +114,18 @@ class MyPdf(Gtk.Box):
         self.set_homogeneous(False)
         self.pdf = pdf
 
-        new = Gtk.Button()
+        new = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        new.set_homogeneous(False)
         filename = os.path.basename(pdf.path)
         date = str(pdf.date)
-        complete = "yes" if pdf.metadata_complete else "no"
-        label = Gtk.Label("name: {}\ndate: {}\n complete: {}".format(filename, date, complete))
-        new.add(label)
+        label = Gtk.Label("Name: {}\nDate: {}\n".format(filename, date))
+        new.pack_start(label, True, True, 5)
+        self.status = Gtk.Image()
+        if pdf.metadata_complete:
+            self.status.set_from_stock(Gtk.STOCK_APPLY, Gtk.IconSize.BUTTON)
+        else:
+            self.status.set_from_stock(Gtk.STOCK_DIALOG_WARNING, Gtk.IconSize.BUTTON)
+        new.pack_start(self.status, False, False, 2)
 
         self.pack_start(new, True, True, 0)
         self.tags = Gtk.Box(Gtk.Orientation.HORIZONTAL, spacing=2)
@@ -509,7 +516,7 @@ class MainWindow(Gtk.Window):
                     session.commit()
         return True
 
-    def image_move(self, direction, select=None):
+    def pdf_select(self, direction, select=None):
         child = self.flow.get_current()
         all = self.flow.get_children()
         i = all.index(child)
@@ -644,11 +651,11 @@ class MainWindow(Gtk.Window):
                 return True
             elif shortcut in ["Left", "Right", "Up", "Down"]:
                 # print("cursor move")
-                self.image_move(shortcut)
+                self.pdf_select(shortcut)
                 return True
             elif shortcut in ["Shift+Left", "Shift+Right", "Shift+Up", "Shift+Down"]:
                 # print("shift select")
-                self.image_move(shortcut[6:], select=True)
+                self.pdf_select(shortcut[6:], select=True)
                 return True
             elif shortcut == "Tab":
                 page = self.main.get_current_page()
@@ -683,24 +690,35 @@ class MainWindow(Gtk.Window):
                     self.flow.unselect_child(sel)
             elif shortcut in ["L"]:
                 # print("Got select")
-                pdf = self.flow.get_focus_child().get_child().pdf
+                pdf_flow = self.flow.get_focus_child().get_child()
+                pdf = pdf_flow.pdf
                 print(pdf.path)
                 with open(pdf.path, "rb") as f:
                     doc = slate3k.PDF(f)
                 doi = None
+                # find first doi string in pdf
                 for i in doc:
                     if 'doi' in i:
                         start = i.find('doi')
                         stop = i.find("\n", start)
                         doi = i[start+4:stop]
+                        break
+                    # some IEEE journals use the following string
+                    if 'Digital Object Identiﬁer' in i:
+                        start = i.find('Digital Object Identiﬁer')
+                        stop = i.find("\n", start)
+                        doi = i[start+24:stop]
+                        break
                 if doi is not None:
-                    print("commiting to database")
-                    pdf.doi = doi
-                    out = gscholar.query(doi)
+                    print("Getting metadata and commiting to database")
+                    pdf.doi = doi.strip()
+                    out = gscholar.query(doi.strip())
                     bibtex = bibtexparser.loads(out[0]).entries[0]
-                    print("got bibtex:", bibtex)
+                    print(bibtex)
+                    complete = 0
                     if 'title' in bibtex:
-                        pdf.title = bibtex['title']
+                        pdf.title = bibtex['title'].strip()
+                        complete += 1
                     if 'author' in bibtex:
                         authors = bibtex['author'].split('and')
                         print("found authors", authors)
@@ -713,9 +731,10 @@ class MainWindow(Gtk.Window):
                                 session.add(p)
                                 session.flush()
                                 pdf.authors.append(p)
+                        complete += 1
                     if 'journal' in bibtex:
                         if not session.query(Journals).filter(Journals.name == bibtex['journal']).first():
-                            j = Journals(name=bibtex['journal'])
+                            j = Journals(name=bibtex['journal'].strip())
                             print(j)
                             session.add(j)
                             session.flush()
@@ -723,17 +742,23 @@ class MainWindow(Gtk.Window):
                                 pdf.journal.append(j)
                             else:
                                 pdf.journal = j
+                        complete += 1
                     if 'volume' in bibtex:
-                        pdf.volume = bibtex['volume']
+                        pdf.volume = bibtex['volume'].strip()
                         print("setting volume", pdf.volume)
+                        complete += 1
                     if 'pages' in bibtex:
-                        pdf.pages = bibtex['pages']
+                        pdf.pages = bibtex['pages'].strip()
                         print("setting pages", pdf.pages)
+                        complete += 1
                     if 'year' in bibtex:
-                        pdf.year = bibtex['year']
+                        pdf.year = bibtex['year'].strip()
+                        complete += 1
+                    if complete >= 6:
+                        pdf_flow.status.set_from_stock(Gtk.STOCK_APPLY, Gtk.IconSize.BUTTON)
+                        pdf.metadata_complete = True
                     session.commit()
                     print("done")
-                    # print(pdf.bibtex())
                 return True
 
     def open_pdfs(self, objects):
