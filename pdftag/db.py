@@ -64,7 +64,7 @@ class Pdfs(Base):
                 t.name, self.path, ",".join([i.name for i in self.tags])))
 
     def bibtex(self):
-        l = 'xyz'
+        l = 'xyz'  # this is the default label, if possible, we pick up name and year
         if self.authors:
             a = '  author = "{}",\n'.format("and".join(a.name for a in self.authors))
             l = self.authors[0].name
@@ -92,9 +92,14 @@ class Pdfs(Base):
             l = l+str(self.year)
         else:
             y = ''
+        if self.doi:
+            d = '  doi = "{}",\n'.format(self.doi)
+            d += '  url = "http://doi.org/{}",\n'.format(self.doi)
+        else:
+            d = ''
         l = l + ',\n'
 
-        all = '@article{'+ l + a + t + j + n + p + y
+        all = '@article{'+ l + a + t + j + n + p + y + d
         # remove last ',\n'
         all = all[:-2]
         all = all + '\n}\n'
