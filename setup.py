@@ -10,6 +10,11 @@ setup(
     setup_requires=['setuptools_scm', ],
     install_requires=['appdirs',
                       'sqlalchemy',
+                      'alembic',
+                      'gscholar',
+                      'bibtexparser',
+                      'slate3k',
+                      'gi',
                       'tqdm'],
     scripts=['pdftags'],
 
