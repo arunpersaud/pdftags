@@ -43,3 +43,7 @@ metadata, and display the metadata and export to bibtex.
    - don't overwrite hand edited metadata?
    - store database in appdir->user_data
    - create backup of database periodically
+
+** Contribute
+
+Pull requests and feedback welcome!
