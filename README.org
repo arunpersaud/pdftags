@@ -4,53 +4,42 @@
 #+STARTUP: logdone
 #+STARTUP: lognotestats
 
-  both should work well with DOI, for crossref you get a score back that one can check
+* PDFtags
 
-   user interface
-     text or qt
+A program to organize many pdfs using hierarchical tags.
 
-     search
-     results-> list of files
-     single file (current one in results)
-       if single file:
-          show bibtex in form
-          show bibtex as text to copy
-       if multiple:
-          show common entries, otherwise only tag
+The main goal is to make it easy to tag many pdfs, search by tags, and
+open selected pdfs.
 
-     edit of fields:
-        autocomplete from DB for author, tags, journal
+Additional, the program (or separate helper scripts) should make it
+easy to help manage the pdfs. For example, find duplicates, associate
+original pdfs with annotated ones.
 
-     open marked files or all in results
-
-     or
-       show tag hierachy
-
-     keyboard shortcuts:
-        tag
-        edit entries
-	copy entry to clibboard
-	open file(s)
-
-     listen to file changes in directory
-
-     helpers:
-        cron job to find new ones
-        find douplicates by doi/md5, allow for annotated version
-
-     config:
-        api keys?
-        pdf viewer
-        directory for pdfs
-	name of annotated version
-
-   db
-     md5 of file, path, ctime, etc (so that we can check, if we need to automatically check)
-     doi, author, title, ... (all bibtex entries that we normally use)
-     link to annotated version
+The program should also be able to extract DOI information, look up
+metadata, and display the metadata and export to bibtex.
 
 
-     automatically find all finds in folder (that have DOI?)
-     flag for each field if we overwrite it? or always show our entries and original crossref and gscholar
- 
+** Install
+
+   git clone https://github.com/arunpersaud/pdftags.git
+
+   'cd' into directory
+
+   ./pdftags
+
+   set the directory of your pdfs and pdf viewer in the init file (the
+   program will point you to the right file)
+
+
+** TO DO list
+   - edit metadata, auto-complete from existing data
+   - make everything easy to use with keyboard shortcuts
+   - help and about entries in the menu
+   - ask for path and viewer information during startup
+   - check for new files (monitor thread?)
+   - create pdf version for annotation
+   - currently using google scholar, but perhaps also use crossref
      https://www.crossref.org/labs/resolving-citations-we-dont-need-no-stinkin-parser/
+   - don't overwrite hand edited metadata?
+   - store database in appdir->user_data
+   - create backup of database periodically
