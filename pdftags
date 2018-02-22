@@ -185,7 +185,7 @@ class TagFlowBox(Gtk.FlowBox):
         super().__init__()
         self.set_homogeneous(True)
         self.set_selection_mode(Gtk.SelectionMode.MULTIPLE)
-        self.set_activate_on_single_click(False)
+        self.set_activate_on_single_click(True)
         self.connect("keynav-failed", self.failed)
         self.current = None
 
@@ -361,7 +361,7 @@ class MainWindow(Gtk.Window):
         self.pdfbox.set_homogeneous(False)
         self.scroll = Gtk.ScrolledWindow()
         self.flow = TagFlowBox()
-        self.flow.connect("child-activated", self.click_on_thumb)
+        self.flow.connect("child-activated", self.click_on_pdf)
         self.scroll.add(self.flow)
         self.pdfbox.pack_start(self.scroll, True, True, 0)
 
@@ -465,8 +465,9 @@ class MainWindow(Gtk.Window):
         print("keynavfailed")
         return True
 
-    def click_on_thumb(self, obj, child):
-        print("click", obj, child)
+    def click_on_pdf(self, obj, child):
+        #print("click", obj, child)
+        self.pdf_select('Click', child=child)
         # child seems to be always activated in this method, not sure how to fix this
         # if not child.is_selected():
         #     self.flow.select_child(child)
@@ -515,8 +516,9 @@ class MainWindow(Gtk.Window):
                     session.commit()
         return True
 
-    def pdf_select(self, direction, select=None):
-        child = self.flow.get_current()
+    def pdf_select(self, direction, select=None, child=None):
+        if child is None:
+            child = self.flow.get_current()
         all = self.flow.get_children()
         i = all.index(child)
         if direction == "Left":
@@ -527,6 +529,8 @@ class MainWindow(Gtk.Window):
             steps = -self.flow.get_childs_per_line()
         elif direction == "Down":
             steps = self.flow.get_childs_per_line()
+        elif direction == "Click":
+            steps = 0
         else:
             print("Error calculating stesp for: ", direction)
             steps = 1
