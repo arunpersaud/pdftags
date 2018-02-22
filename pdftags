@@ -449,7 +449,7 @@ class MainWindow(Gtk.Window):
 
         # Load some pdfs
         if files is None:
-            for f in session.query(Pdfs).limit(50).all():
+            for f in session.query(Pdfs).all():
                 new = MyPdf(f)
                 self.flow.add(new)
 
