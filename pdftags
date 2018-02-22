@@ -72,7 +72,6 @@ else:
 extensiondir = config.get('Extension', 'path', fallback=None)
 
 
-
 def find_parent_with_type(obj, cls):
     """Find a certain parent or grand^n-parent of an object"""
     while type(obj) != cls:
@@ -395,7 +394,7 @@ class MainWindow(Gtk.Window):
         self.doi_label.set_alignment(0, 0)
         self.doi = Gtk.Label("")
         self.doi.set_alignment(0, 0)
-        self.metadata.attach(self.title_label, 0, 0, 1 ,1)
+        self.metadata.attach(self.title_label, 0, 0, 1, 1)
         self.metadata.attach(self.title, 1, 0, 1, 1)
         self.metadata.attach(self.authors_label, 0, 1, 1, 1)
         self.metadata.attach(self.authors, 1, 1, 1, 1)
@@ -807,11 +806,11 @@ def search_for_new_pdfs():
         for f in files:
             if f.endswith('pdf'):
                 fullpath = os.path.join(root, f)
-                print("->", fullpath)
                 md5hash = md5(fullpath)
                 if session.query(Pdfs).filter(Pdfs.md5 == md5hash).first():
-                    print("  already in database")
+                    pass
                 else:
+                    print("->", fullpath)
                     print("  Adding to database")
                     print("  ", md5hash)
                     new = Pdfs(path=fullpath,
