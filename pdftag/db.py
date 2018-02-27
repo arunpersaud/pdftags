@@ -3,12 +3,15 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, remote, foreign
 from sqlalchemy import create_engine, event
 
+from appdirs import AppDirs
 from datetime import datetime
 import os
 
 Base = declarative_base()
 
-engine = create_engine('sqlite:///pdf.db')
+appdirs = AppDirs("pdftags")
+DBpath = os.path.join(appdirs.user_data_dir, 'pdf.db')
+engine = create_engine('sqlite:///{}'.format(DBpath))
 
 # many to many relationship between pdfs and tags
 pdftag_table = Table('pdftag', Base.metadata,
@@ -178,7 +181,8 @@ class Journals(Base):
         return "Journal: {}->{}\n".format(self.id, self.name)
 
 # create tables
-if not os.path.exists('pdf.db'):
+if not os.path.exists(DBpath):
+    os.makedirs(os.path.dirname(DBpath))
     Base.metadata.create_all(engine)
 
 # create a Session
