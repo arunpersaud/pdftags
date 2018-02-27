@@ -42,7 +42,6 @@ metadata, and display the metadata and export to bibtex.
    - don't overwrite hand edited metadata?
    - store database in appdir->user_data
    - create backup of database periodically (perhaps daily and keep daily, weekly, and monthly versions?)
-   - show number of indexed pdfs somewhere on the home screen
    - make thumbnails of pages and show those on the overview?
    - find duplicates by metadata and or md5, if same metadata, but not md5 link as version?
    - unlink versions of pdfs

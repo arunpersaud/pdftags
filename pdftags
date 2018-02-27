@@ -328,6 +328,10 @@ class MainWindow(Gtk.Window):
         open_pdf_button.connect("clicked", self.open_pdfs)
         hb.pack_start(open_pdf_button)
 
+        self.info = Gtk.Label(" {} pdfs indexed ".format(len(session.query(Pdfs).all())))
+
+        hb.pack_start(self.info)
+
         bquit = Gtk.Button.new_from_icon_name("window-close-symbolic", Gtk.IconSize.SMALL_TOOLBAR)
         bquit.connect("clicked", Gtk.main_quit)
         hb.pack_end(bquit)
