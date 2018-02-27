@@ -46,6 +46,7 @@ metadata, and display the metadata and export to bibtex.
    - find duplicates by metadata and or md5, if same metadata, but not md5 link as version?
    - unlink versions of pdfs
    - check for new files (monitor thread?) <- already works somewhat, e.g. doesn't take too long at the moment during startup
+   - use gtk.application and add command line interface this way
 
 ** Contribute
 
