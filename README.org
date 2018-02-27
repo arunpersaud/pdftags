@@ -47,6 +47,7 @@ metadata, and display the metadata and export to bibtex.
    - unlink versions of pdfs
    - check for new files (monitor thread?) <- already works somewhat, e.g. doesn't take too long at the moment during startup
    - use gtk.application and add command line interface this way
+   - check if alembic needs to update the database at startup
 
 ** Contribute
 
