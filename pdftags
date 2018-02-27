@@ -343,6 +343,12 @@ class MainWindow(Gtk.Window):
         key, mods = Gtk.accelerator_parse("<ctrl>q")
         bquit.add_accelerator("clicked", accelerators, key, mods, Gtk.AccelFlags.VISIBLE)
 
+        about_button = Gtk.Button()
+        label = Gtk.Label("about")
+        about_button.add(label)
+        about_button.connect("clicked", self.open_about)
+        hb.pack_end(about_button)
+
         # The main windows
         # help in window bar to show current key shortcuts
 
@@ -519,6 +525,23 @@ class MainWindow(Gtk.Window):
                     tag.move_to(newparent)
                     session.commit()
         return True
+
+    def open_about(self, arg):
+        about = Gtk.AboutDialog()
+        about.set_destroy_with_parent(True)
+        about.set_program_name ("PdfTags")
+        about.set_copyright("©2018  Arun Persaud")
+        about.set_license_type(Gtk.License.GPL_3_0)
+        about.set_title("About PdfTags")
+        #about.set_comments("doesn't show up")
+        #about.set_version("need to read from setup.py")
+        about.set_comments("Hierarchical tags for your Pdf collection")
+        about.set_website("https://github.com/arunpersaud/pdftags")
+        about.set_website_label("Project page @ Github")
+        about.set_authors(["Arun Persaud"])
+        about.show()
+        about.run()
+        about.destroy()
 
     def pdf_select(self, direction, select=None, child=None):
         if child is None:

@@ -34,7 +34,8 @@ metadata, and display the metadata and export to bibtex.
 ** TO DO list
    - edit metadata, auto-complete from existing data
    - make everything easy to use with keyboard shortcuts
-   - help and about entries in the menu
+   - help entry in the menu
+   - about: show location of ini file, and db file
    - ask for path and viewer information during startup
    - create pdf version for annotation
    - currently using google scholar, but perhaps also use crossref
