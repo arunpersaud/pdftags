@@ -357,6 +357,7 @@ class MainWindow(Gtk.Window):
         self.add(self.box)
 
         self.main = Gtk.Notebook()
+        self.main.connect("switch-page", self.update_bibtex)
         self.box.pack_start(self.main, True, True, 0)
 
         #   thumbs overview
@@ -698,8 +699,6 @@ class MainWindow(Gtk.Window):
                     self.entry.show()
                 else:
                     self.entry.hide()
-                if newpage == 1:
-                    self.update_bibtex()
                 self.main.set_current_page(newpage)
                 return True
             elif shortcut == "Shift+Left Tab":
@@ -710,8 +709,6 @@ class MainWindow(Gtk.Window):
                     self.entry.hide()
                 else:
                     self.entry.show()
-                if newpage == 1:
-                    self.update_bibtex()
                 self.main.set_current_page(newpage)
                 return True
             elif shortcut in ["X", "Space"]:
@@ -828,9 +825,14 @@ class MainWindow(Gtk.Window):
         print("loading ", tag.name)
         self.load_tags(None, tags=tag.name)
 
-    def update_bibtex(self):
-        text = "\n".join(s.get_child().pdf.bibtex() for s in self.flow.get_selected_children())
-        self.bibtex.set_text(text)
+    def update_bibtex(self, notebook, page, num):
+        if num == 1:
+            selected = self.flow.get_selected_children()
+            if selected:
+                text = "\n".join(s.get_child().pdf.bibtex() for s in selected)
+            else:
+                text = "No Pdfs selected"
+            self.bibtex.set_text(text)
 
 
 def search_for_new_pdfs():
