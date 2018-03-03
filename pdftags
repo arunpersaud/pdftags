@@ -403,8 +403,15 @@ class MainWindow(Gtk.Window):
         self.pages.set_alignment(0, 0)
         self.doi_label = Gtk.Label("Doi:")
         self.doi_label.set_alignment(0, 0)
+        self.doi_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
         self.doi = Gtk.Label("")
         self.doi.set_alignment(0, 0)
+        self.doi_entry = Gtk.Entry()
+        self.doi_edit = Gtk.Button.new_from_icon_name("insert-text", Gtk.IconSize.SMALL_TOOLBAR)
+        self.doi_edit.connect('clicked', self.edit_doi)
+        self.doi_box.pack_start(self.doi, True, True, 0)
+        self.doi_box.pack_start(self.doi_entry, False, False, 0)
+        self.doi_box.pack_start(self.doi_edit, False, False, 0)
         self.metadata.attach(self.title_label, 0, 0, 1, 1)
         self.metadata.attach(self.title, 1, 0, 1, 1)
         self.metadata.attach(self.authors_label, 0, 1, 1, 1)
@@ -416,8 +423,8 @@ class MainWindow(Gtk.Window):
         self.metadata.attach(self.pages_label, 0, 4, 1, 1)
         self.metadata.attach(self.pages, 1, 4, 1, 1)
         self.metadata.attach(self.doi_label, 0, 5, 1, 1)
-        self.metadata.attach(self.doi, 1, 5, 1, 1)
-        # end metadata
+        self.metadata.attach(self.doi_box, 1, 5, 1, 1)
+       # end metadata
 
         self.pdfbox.pack_start(self.metadata, False, False, 0)
         self.main.append_page(self.pdfbox, Gtk.Label("Pdfs"))
@@ -471,6 +478,10 @@ class MainWindow(Gtk.Window):
 
         self.show_all()
         self.main.set_current_page(1)
+
+    def edit_doi(self, *args):
+        self.doi.hide()
+        self.doi_entry.show()
 
     def keynavfailed(self, *args):
         print("keynavfailed")
@@ -614,6 +625,7 @@ class MainWindow(Gtk.Window):
             self.doi.set_markup('<a href="https://doi.org/{0}">{0}</a>'.format(pdf.doi))
         else:
             self.doi.set_text('')
+        self.doi_entry.hide()
 
     def on_key_event(self, widget, event):
         shortcut = Gtk.accelerator_get_label(event.keyval, event.state)
@@ -642,6 +654,65 @@ class MainWindow(Gtk.Window):
             if shortcut == "Return":
                 text = self.searchentry.get_text()
                 self.load_tags(None, tags=text)
+        elif self.doi_entry.has_focus():
+            pdf_flow = self.flow.get_current().get_child()
+            pdf = pdf_flow.pdf
+            if shortcut == "Return":
+                text = self.doi_entry.get_text()
+                print("got text", text)
+                if text:
+                    print("Getting metadata and commiting to database")
+                    pdf.doi = text.strip()
+                    out = gscholar.query(text.strip())
+                    bibtex = bibtexparser.loads(out[0]).entries[0]
+                    print(bibtex)
+                    complete = 0
+                    if 'title' in bibtex:
+                        pdf.title = bibtex['title'].strip()
+                        complete += 1
+                    if 'author' in bibtex:
+                        authors = bibtex['author'].split('and')
+                        print("found authors", authors)
+                        if pdf.authors is None:
+                            pdf.authors = []
+                        for a in authors:
+                            if not session.query(People).filter(People.name == a).first():
+                                p = People(name=a)
+                                print(p)
+                                session.add(p)
+                                session.flush()
+                                pdf.authors.append(p)
+                        complete += 1
+                    if 'journal' in bibtex:
+                        if not session.query(Journals).filter(Journals.name == bibtex['journal']).first():
+                            j = Journals(name=bibtex['journal'].strip())
+                            print(j)
+                            session.add(j)
+                            session.flush()
+                            if pdf.journal is not None:
+                                pdf.journal.append(j)
+                            else:
+                                pdf.journal = j
+                        complete += 1
+                    if 'volume' in bibtex:
+                        pdf.volume = bibtex['volume'].strip()
+                        print("setting volume", pdf.volume)
+                        complete += 1
+                    if 'pages' in bibtex:
+                        pdf.pages = bibtex['pages'].strip()
+                        print("setting pages", pdf.pages)
+                        complete += 1
+                    if 'year' in bibtex:
+                        pdf.year = bibtex['year'].strip()
+                        complete += 1
+                    if complete >= 6:
+                        pdf_flow.status.set_from_stock(Gtk.STOCK_APPLY, Gtk.IconSize.BUTTON)
+                        pdf.metadata_complete = True
+                    session.commit()
+                    print("done")
+                    self.display_metadata(pdf)
+                self.doi_entry.hide()
+                self.doi.show()
         elif self.entry.has_focus():
             if shortcut == "Return":
                 text = self.entry.get_text()
