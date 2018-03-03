@@ -578,6 +578,14 @@ class MainWindow(Gtk.Window):
         all[next].do_grab_focus(all[next])
         self.flow.current = all[next]
         pdf = self.flow.current.get_child().pdf
+        self.display_metadata(pdf)
+
+        self.flow.queue_draw()
+        if not all[next].get_visible():
+            print("need to scroll")
+        return True
+
+    def display_metadata(self, pdf):
         if pdf.title:
             self.title.set_text(pdf.title)
         else:
@@ -605,11 +613,6 @@ class MainWindow(Gtk.Window):
             self.doi.set_markup('<a href="https://doi.org/{0}">{0}</a>'.format(pdf.doi))
         else:
             self.doi.set_text('')
-
-        self.flow.queue_draw()
-        if not all[next].get_visible():
-            print("need to scroll")
-        return True
 
     def on_key_event(self, widget, event):
         shortcut = Gtk.accelerator_get_label(event.keyval, event.state)
@@ -789,6 +792,7 @@ class MainWindow(Gtk.Window):
                         pdf.metadata_complete = True
                     session.commit()
                     print("done")
+                    self.display_metadata(pdf)
                 return True
 
     def open_pdfs(self, objects):
