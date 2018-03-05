@@ -541,7 +541,7 @@ class MainWindow(Gtk.Window):
     def open_about(self, arg):
         about = Gtk.AboutDialog()
         about.set_destroy_with_parent(True)
-        about.set_program_name ("PdfTags")
+        about.set_program_name("PdfTags")
         about.set_copyright("©2018  Arun Persaud")
         about.set_license_type(Gtk.License.GPL_3_0)
         about.set_title("About PdfTags")
@@ -661,55 +661,9 @@ class MainWindow(Gtk.Window):
                 text = self.doi_entry.get_text()
                 print("got text", text)
                 if text:
-                    print("Getting metadata and commiting to database")
-                    pdf.doi = text.strip()
-                    out = gscholar.query(text.strip())
-                    bibtex = bibtexparser.loads(out[0]).entries[0]
-                    print(bibtex)
-                    complete = 0
-                    if 'title' in bibtex:
-                        pdf.title = bibtex['title'].strip()
-                        complete += 1
-                    if 'author' in bibtex:
-                        authors = bibtex['author'].split('and')
-                        print("found authors", authors)
-                        if pdf.authors is None:
-                            pdf.authors = []
-                        for a in authors:
-                            if not session.query(People).filter(People.name == a).first():
-                                p = People(name=a)
-                                print(p)
-                                session.add(p)
-                                session.flush()
-                                pdf.authors.append(p)
-                        complete += 1
-                    if 'journal' in bibtex:
-                        if not session.query(Journals).filter(Journals.name == bibtex['journal']).first():
-                            j = Journals(name=bibtex['journal'].strip())
-                            print(j)
-                            session.add(j)
-                            session.flush()
-                            if pdf.journal is not None:
-                                pdf.journal.append(j)
-                            else:
-                                pdf.journal = j
-                        complete += 1
-                    if 'volume' in bibtex:
-                        pdf.volume = bibtex['volume'].strip()
-                        print("setting volume", pdf.volume)
-                        complete += 1
-                    if 'pages' in bibtex:
-                        pdf.pages = bibtex['pages'].strip()
-                        print("setting pages", pdf.pages)
-                        complete += 1
-                    if 'year' in bibtex:
-                        pdf.year = bibtex['year'].strip()
-                        complete += 1
-                    if complete >= 6:
+                    self.get_metadata_gscholar(pdf, text)
+                    if pdf.metadata_complete:
                         pdf_flow.status.set_from_stock(Gtk.STOCK_APPLY, Gtk.IconSize.BUTTON)
-                        pdf.metadata_complete = True
-                    session.commit()
-                    print("done")
                     self.display_metadata(pdf)
                 self.doi_entry.hide()
                 self.doi.show()
@@ -811,57 +765,66 @@ class MainWindow(Gtk.Window):
                         doi = i[start+24:stop]
                         break
                 if doi is not None:
-                    print("Getting metadata and commiting to database")
-                    pdf.doi = doi.strip()
-                    out = gscholar.query(doi.strip())
-                    bibtex = bibtexparser.loads(out[0]).entries[0]
-                    print(bibtex)
-                    complete = 0
-                    if 'title' in bibtex:
-                        pdf.title = bibtex['title'].strip()
-                        complete += 1
-                    if 'author' in bibtex:
-                        authors = bibtex['author'].split('and')
-                        print("found authors", authors)
-                        if pdf.authors is None:
-                            pdf.authors = []
-                        for a in authors:
-                            if not session.query(People).filter(People.name == a).first():
-                                p = People(name=a)
-                                print(p)
-                                session.add(p)
-                                session.flush()
-                                pdf.authors.append(p)
-                        complete += 1
-                    if 'journal' in bibtex:
-                        if not session.query(Journals).filter(Journals.name == bibtex['journal']).first():
-                            j = Journals(name=bibtex['journal'].strip())
-                            print(j)
-                            session.add(j)
-                            session.flush()
-                            if pdf.journal is not None:
-                                pdf.journal.append(j)
-                            else:
-                                pdf.journal = j
-                        complete += 1
-                    if 'volume' in bibtex:
-                        pdf.volume = bibtex['volume'].strip()
-                        print("setting volume", pdf.volume)
-                        complete += 1
-                    if 'pages' in bibtex:
-                        pdf.pages = bibtex['pages'].strip()
-                        print("setting pages", pdf.pages)
-                        complete += 1
-                    if 'year' in bibtex:
-                        pdf.year = bibtex['year'].strip()
-                        complete += 1
-                    if complete >= 6:
+                    self.get_metadata_gscholar(pdf, doi)
+                    if pdf.metadata_complete:
                         pdf_flow.status.set_from_stock(Gtk.STOCK_APPLY, Gtk.IconSize.BUTTON)
-                        pdf.metadata_complete = True
-                    session.commit()
-                    print("done")
                     self.display_metadata(pdf)
                 return True
+
+    def get_metadata_gscholar(self, pdf, doi):
+        doi = doi.strip()
+        print("Getting metadata and commiting to database")
+        pdf.doi = doi
+        out = gscholar.query(doi)
+        bibtex = bibtexparser.loads(out[0]).entries[0]
+        print(bibtex)
+        complete = 0
+        if 'title' in bibtex:
+            pdf.title = bibtex['title'].strip()
+            complete += 1
+        if 'author' in bibtex:
+            authors = bibtex['author'].split('and')
+            print("found authors", authors)
+            if pdf.authors is None:
+                pdf.authors = []
+            for a in authors:
+                p = session.query(People).filter(People.name == a).first()
+                if not p:
+                    p = People(name=a)
+                    print("Adding new person to the db:", p)
+                    session.add(p)
+                    session.flush()
+                pdf.authors.append(p)
+                session.flush()
+            complete += 1
+        if 'journal' in bibtex:
+            # look up journal
+            j = session.query(Journals).filter(Journals.name == bibtex['journal']).first()
+            if not j:
+                j = Journals(name=bibtex['journal'].strip())
+                session.add(j)
+                session.flush()
+                print("new journal:", j)
+            print("setting journal:", j.name, j)
+            pdf.journal = j
+            session.flush()
+            complete += 1
+        if 'volume' in bibtex:
+            pdf.volume = bibtex['volume'].strip()
+            print("setting volume", pdf.volume)
+            complete += 1
+        if 'pages' in bibtex:
+            pdf.pages = bibtex['pages'].strip()
+            print("setting pages", pdf.pages)
+            complete += 1
+        if 'year' in bibtex:
+            pdf.year = bibtex['year'].strip()
+            complete += 1
+        if complete >= 6:
+            pdf.metadata_complete = True
+        session.add(pdf)
+        session.commit()
+        print("done")
 
     def open_pdfs(self, objects):
         for s in self.flow.get_selected_children():
