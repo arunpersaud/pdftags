@@ -49,6 +49,7 @@ metadata, and display the metadata and export to bibtex.
    - use gtk.application and add command line interface this way
    - check if alembic needs to update the database at startup
    - add full text search using ponywoosh, perhaps with separate search entry for now?
+   - button to create email with pdfs attached and list of links in text
 
 ** Contribute
 
